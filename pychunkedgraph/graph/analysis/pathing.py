@@ -99,6 +99,11 @@ def get_lvl2_edge_list(
         )
 
     edges = _get_edges_for_lvl2_ids(cg, lvl2_ids)
+
+    # make this an induced subgraph, remove any edges not among the lvl2_ids
+    mask = np.isin(edges[:, 0], lvl2_ids) & np.isin(edges[:, 1], lvl2_ids)
+    edges = edges[mask]
+
     return edges
 
 
@@ -150,6 +155,48 @@ def _get_edges_for_lvl2_ids(cg, lvl2_ids):
     edge_view.shape = -1
     fastremap.remap_from_array_kv(edge_view, known_supervoxel_array, known_l2_array)
     return np.unique(np.sort(edge_array, axis=1), axis=0)
+
+
+def get_lvl2_edge_diffs(cg, pre_node_ids, post_node_ids, bbox=None):
+    """
+    Get the edges that have changed between the pre and post node ids.
+    :param cg: ChunkedGraph object
+    :param pre_node_ids: np.ndarray
+    :param post_node_ids: np.ndarray
+    :param bbox: Optional[Sequence[Sequence[int]]]
+    :return: np.ndarray
+    """
+    all_node_ids = np.unique(np.concatenate((pre_node_ids, post_node_ids)))
+
+    all_lvl2_ids = get_subgraph_nodes(
+        cg,
+        all_node_ids,
+        bbox=bbox,
+        bbox_is_coordinate=True,
+        return_layers=[2],
+        return_flattened=False,
+    )
+
+    all_pre_lvl2_ids = []
+    for node in pre_node_ids:
+        all_lvl2_ids_for_node = all_lvl2_ids[node]
+        all_pre_lvl2_ids.append(all_lvl2_ids_for_node)
+
+    all_post_lvl2_ids = []
+    for node in post_node_ids:
+        all_lvl2_ids_for_node = all_lvl2_ids[node]
+        all_post_lvl2_ids.append(all_lvl2_ids_for_node)
+
+    pre_edges = _get_edges_for_lvl2_ids(cg, all_pre_lvl2_ids)
+    post_edges = _get_edges_for_lvl2_ids(cg, all_post_lvl2_ids)
+
+    pre_edges_set = set(map(tuple, pre_edges))
+    post_edges_set = set(map(tuple, post_edges))
+
+    edges_added = np.array(list(post_edges_set - pre_edges_set))
+    edges_removed = np.array(list(pre_edges_set - post_edges_set))
+
+    return edges_added, edges_removed
 
 
 def find_l2_shortest_path(

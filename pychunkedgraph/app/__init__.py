@@ -4,25 +4,27 @@ import logging
 import os
 import sys
 import time
+from pstats import SortKey
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import redis
 from flask import Flask
 from flask.json.provider import DefaultJSONProvider
 from flask.logging import default_handler
 from flask_cors import CORS
 from rq import Queue
+from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from pychunkedgraph.logging import jsonformatter
 
 from . import config
+from .app_utils import get_instance_folder_path
 from .meshing.legacy.routes import bp as meshing_api_legacy
 from .meshing.v1.routes import bp as meshing_api_v1
+from .segmentation.generic.routes import bp as generic_api
 from .segmentation.legacy.routes import bp as segmentation_api_legacy
 from .segmentation.v1.routes import bp as segmentation_api_v1
-from .segmentation.generic.routes import bp as generic_api
-from .app_utils import get_instance_folder_path
 
 
 class CustomJsonEncoder(json.JSONEncoder):
@@ -57,6 +59,12 @@ def create_app(test_config=None):
         instance_path=get_instance_folder_path(),
         instance_relative_config=True,
     )
+
+    # app.config["PROFILE"] = True
+    # app.wsgi_app = ProfilerMiddleware(
+    #     app.wsgi_app, restrictions=[60], sort_by=[SortKey.CUMULATIVE]
+    # )
+
     app.json = CustomJSONProvider(app)
 
     CORS(app, expose_headers="WWW-Authenticate")
@@ -103,8 +111,8 @@ def configure_app(app):
         app.redis = redis.Redis.from_url(app.config["REDIS_URL"])
         app.test_q = Queue("test", connection=app.redis)
         with app.app_context():
-            from ..ingest.rq_cli import init_rq_cmds
             from ..ingest.cli import init_ingest_cmds
+            from ..ingest.rq_cli import init_rq_cmds
 
             init_rq_cmds(app)
             init_ingest_cmds(app)
